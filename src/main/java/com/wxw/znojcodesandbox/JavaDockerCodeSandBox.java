@@ -216,6 +216,6 @@ public class JavaDockerCodeSandBox extends JavaCodeSandBoxTemplate {
 
     @Override
     public ExecuteMessage compileCode(File userCodeFile) {
-        // TODO
+        return null;
     }
 }
