@@ -1,0 +1,36 @@
+package com.wxw.znojcodesandbox;
+
+
+import cn.hutool.core.io.resource.ResourceUtil;
+import com.wxw.znojcodesandbox.model.CodeSandBoxRequest;
+import com.wxw.znojcodesandbox.model.CodeSandBoxResponse;
+import org.springframework.stereotype.Component;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+
+/**
+ * @author by xxz
+ * @Description  Java原生代码沙箱
+ * @date 2024/9/18
+ * @throws
+ */
+@Component
+public class JavaNativeCodeSandBox extends JavaCodeSandBoxTemplate {
+
+    public static void main(String[] args) {
+        CodeSandBox codeSandBox = new JavaNativeCodeSandBox();
+        CodeSandBoxRequest codeSandBoxRequest = new CodeSandBoxRequest();
+        String code = ResourceUtil.readStr("testCode/simpleComputeArgs/Main.java", StandardCharsets.UTF_8);
+        codeSandBoxRequest.setCode(code);
+        codeSandBoxRequest.setLanguage("java");
+        codeSandBoxRequest.setInputList(Arrays.asList("1 2","2 3"));
+        CodeSandBoxResponse codeSandBoxResponse = codeSandBox.run(codeSandBoxRequest);
+        System.out.println(codeSandBoxResponse);
+    }
+    @Override
+    public CodeSandBoxResponse run(CodeSandBoxRequest codeSandBoxRequest) {
+        // 调用父类的方法执行代码
+        return super.run(codeSandBoxRequest);
+    }
+}
