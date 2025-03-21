@@ -40,20 +40,24 @@ public abstract class JavaCodeSandBoxTemplate implements CodeSandBox{
      */
     private static final String SECURITY_MANAGER_CLASS_NAME = "MySecurityManager";
     /**
-     * 执行超时时间(非题目限制，防止无限期执行)
+     * 执行超时时间(非题目限制，防止无限期执行): 10s
      */
     private static final Long RUN_TIME_OUT = 10000L;
     /**
-     * 编译超时时间(非题目限制，防止无限期执行)
+     * 编译超时时间(非题目限制，防止无限期执行): 10s
      */
     private static final Long COMPILE_TIME_OUT = 10000L;
     /**
+     * 编译内存限制(非题目限制): 64MB
+     */
+    private static final Long COMPILE_MEMORY_OUT = 64 * 1024L * 1024L;
+    /**
      * 代码文件唯一标识
      */
-    private String uuid;
+    private static String uuid;
 
     /**
-     * 核心代码
+     * 代码沙箱执行流程
      * @param codeSandBoxRequest
      * @return
      */
@@ -61,14 +65,13 @@ public abstract class JavaCodeSandBoxTemplate implements CodeSandBox{
     public CodeSandBoxResponse run(CodeSandBoxRequest codeSandBoxRequest) {
         // 1. 获取代码沙箱请求信息
         String code = codeSandBoxRequest.getCode();
-        String language = codeSandBoxRequest.getLanguage();
         List<String> inputList = codeSandBoxRequest.getInputList();
 
         // 2. 将代码写入到文件中
         File userCodeFile = saveCodeToFile(code);
 
-        // 3.编译代码,编译错误直接返回错误信息,不用再执行代码
-        ExecuteMessage compileFileExecuteMessage = compileCode(userCodeFile);
+        // 3.编译代码,若编译错误直接返回错误信息,不用再执行代码
+        ExecuteMessage compileFileExecuteMessage = compileCode(userCodeFile, uuid);
         if (compileFileExecuteMessage.getErrorMessage() != null){
             CodeSandBoxResponse codeSandBoxResponse = new CodeSandBoxResponse();
             codeSandBoxResponse.setCompileMessage("compileError: " + compileFileExecuteMessage.getErrorMessage());
@@ -81,9 +84,14 @@ public abstract class JavaCodeSandBoxTemplate implements CodeSandBox{
             codeSandBoxResponse.setCompileMessage("编译超时");
             return codeSandBoxResponse;
         }
+        if (compileFileExecuteMessage.getMemory() > COMPILE_MEMORY_OUT){
+            CodeSandBoxResponse codeSandBoxResponse = new CodeSandBoxResponse();
+            codeSandBoxResponse.setCompileMessage("编译内存超限");
+            return codeSandBoxResponse;
+        }
 
         // 4. 执行代码
-        List<ExecuteMessage> executeMessageList = runFile(userCodeFile, inputList, uuid);
+        List<ExecuteMessage> executeMessageList = runFile(userCodeFile, inputList);
 
         // 5.整理返回结果
         CodeSandBoxResponse codeSandBoxResponse = getResponse(executeMessageList);
@@ -122,7 +130,7 @@ public abstract class JavaCodeSandBoxTemplate implements CodeSandBox{
      * @param userCodeFile
      * @return
      */
-    public ExecuteMessage compileCode(File userCodeFile){
+    public ExecuteMessage compileCode(File userCodeFile, String uuid){
         // 3.编译代码
         String compileCmd = String.format("javac -encoding utf-8 %s", userCodeFile.getAbsolutePath());
         try {
@@ -141,7 +149,7 @@ public abstract class JavaCodeSandBoxTemplate implements CodeSandBox{
      * @param inputList
      * @return
      */
-    public List<ExecuteMessage> runFile(File userCodeFile, List<String> inputList, String uuid){
+    public List<ExecuteMessage> runFile(File userCodeFile, List<String> inputList){
         String userCodeParentPath = userCodeFile.getParentFile().getAbsolutePath();
         // 4.执行代码(多个输入用例多次执行)
         List<ExecuteMessage> executeMessageList = new ArrayList<>(); // 存储每次执行的信息

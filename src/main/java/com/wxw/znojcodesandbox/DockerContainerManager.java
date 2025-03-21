@@ -22,47 +22,40 @@ import java.util.Arrays;
  */
 public class DockerContainerManager {
     /**
-     * Docker客户端
+     * 是否初次拉取镜像
      */
-    private DockerClient dockerClient;
-    /**
-     * 容器ID
-     */
-    private String containerId;
+    private Boolean IS_INIT = false;
 
-
-    public DockerContainerManager() {
-        this.dockerClient = DockerClientBuilder.getInstance(DefaultDockerClientConfig.createDefaultConfigBuilder()
-                .withDockerHost("tcp://192.168.100.1:2375")
-                .build()).build();
-    }
 
     /**
-     * 创建容器
+     * 创建容器并启动
      * @return 容器ID
      */
     public String createContainer(String uuid) {
         // 创建容器逻辑，设置容器ID
         // 这里需要根据实际情况来设置容器配置，例如挂载卷、网络等
         String image = "openjdk:8-alpine";
-        PullImageCmd pullImageCmd = dockerClient.pullImageCmd(image);
-        PullImageResultCallback pullImageResultCallback = new PullImageResultCallback() {
-            @Override
-            public void onNext(PullResponseItem item) {
-                System.out.println("下载镜像：" + item.getStatus());
-                super.onNext(item);
+        if (IS_INIT) {
+            PullImageCmd pullImageCmd = DockerClientManager.getDockerClient().pullImageCmd(image);
+            PullImageResultCallback pullImageResultCallback = new PullImageResultCallback() {
+                @Override
+                public void onNext(PullResponseItem item) {
+                    System.out.println("下载镜像：" + item.getStatus());
+                    super.onNext(item);
+                }
+            };
+            try {
+                pullImageCmd
+                        .exec(pullImageResultCallback)
+                        .awaitCompletion();
+                IS_INIT = true;
+            } catch (InterruptedException e) {
+                System.out.println("拉取镜像异常");
+                throw new RuntimeException(e);
             }
-        };
-        try {
-            pullImageCmd
-                    .exec(pullImageResultCallback)
-                    .awaitCompletion();
-        } catch (InterruptedException e) {
-            System.out.println("拉取镜像异常");
-            throw new RuntimeException(e);
         }
         System.out.println("镜像下载完成");
-        CreateContainerCmd containerCmd = dockerClient.createContainerCmd(image);
+        CreateContainerCmd containerCmd = DockerClientManager.getDockerClient().createContainerCmd(image);
         HostConfig hostConfig = new HostConfig();
         hostConfig.withMemory(100 * 1000 * 1000L);
         hostConfig.withMemorySwap(0L);
@@ -80,19 +73,20 @@ public class DockerContainerManager {
                 .withAttachStdout(true)
                 .withTty(true)
                 .exec();
-        System.out.println(createContainerResponse);
+        System.out.println("容器创建成功: " + createContainerResponse);
         String containerId = createContainerResponse.getId();
-
+        DockerClientManager.getDockerClient().startContainerCmd(containerId).exec();
+        System.out.println("容器 " + containerId + " 启动成功:");
         return containerId;
     }
 
     /**
      * 删除容器
      */
-    public void removeContainer() {
+    public void removeContainer(String containerId) {
         if (containerId != null) {
-            dockerClient.stopContainerCmd(containerId).exec();
-            dockerClient.removeContainerCmd(containerId).exec();
+            DockerClientManager.getDockerClient().stopContainerCmd(containerId).exec();
+            DockerClientManager.getDockerClient().removeContainerCmd(containerId).exec();
             System.out.println("容器删除成功");
         } else{
             throw new RuntimeException("容器ID为空，无法删除容器");
