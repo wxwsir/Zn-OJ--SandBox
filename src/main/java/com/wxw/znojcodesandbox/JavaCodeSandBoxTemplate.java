@@ -55,7 +55,12 @@ public abstract class JavaCodeSandBoxTemplate implements CodeSandBox{
      * 代码文件唯一标识
      */
     private static String uuid;
+    /**
+     * 特殊判题代码文件名
+     */
+    private static String specialCodeName = "FloatAnswerChecker.java";
 
+    private static String specialCodePath = "FloatCode";
     /**
      * 代码沙箱执行流程
      * @param codeSandBoxRequest
@@ -66,35 +71,53 @@ public abstract class JavaCodeSandBoxTemplate implements CodeSandBox{
         // 1. 获取代码沙箱请求信息
         String code = codeSandBoxRequest.getCode();
         List<String> inputList = codeSandBoxRequest.getInputList();
+        Integer isSpecial = codeSandBoxRequest.getIs_special();
 
         // 2. 将代码写入到文件中
         File userCodeFile = saveCodeToFile(code);
-
+        CodeSandBoxResponse codeSandBoxResponse;
         // 3.编译代码,若编译错误直接返回错误信息,不用再执行代码
         ExecuteMessage compileFileExecuteMessage = compileCode(userCodeFile, uuid);
         if (compileFileExecuteMessage.getErrorMessage() != null){
-            CodeSandBoxResponse codeSandBoxResponse = new CodeSandBoxResponse();
+            codeSandBoxResponse = new CodeSandBoxResponse();
             codeSandBoxResponse.setCompileMessage("compileError: " + compileFileExecuteMessage.getErrorMessage());
             System.out.println("编译结果：" + compileFileExecuteMessage.getErrorMessage());
             return codeSandBoxResponse;
         }
         // 编译超时
         if (compileFileExecuteMessage.getTime() > COMPILE_TIME_OUT){
-            CodeSandBoxResponse codeSandBoxResponse = new CodeSandBoxResponse();
+            codeSandBoxResponse = new CodeSandBoxResponse();
             codeSandBoxResponse.setCompileMessage("编译超时");
             return codeSandBoxResponse;
         }
         if (compileFileExecuteMessage.getMemory() > COMPILE_MEMORY_OUT){
-            CodeSandBoxResponse codeSandBoxResponse = new CodeSandBoxResponse();
+            codeSandBoxResponse = new CodeSandBoxResponse();
             codeSandBoxResponse.setCompileMessage("编译内存超限");
             return codeSandBoxResponse;
         }
-
         // 4. 执行代码
         List<ExecuteMessage> executeMessageList = runFile(userCodeFile, inputList);
-
         // 5.整理返回结果
-        CodeSandBoxResponse codeSandBoxResponse = getResponse(executeMessageList);
+        codeSandBoxResponse = getResponse(executeMessageList);
+        // 获取沙箱输出
+        List<String> outputList = codeSandBoxResponse.getOutputList();
+        // 特殊判题
+        if(isSpecial == 1){
+            JavaDockerSpecialCodeSandBox javaDockerSpecialCodeSandBox = new JavaDockerSpecialCodeSandBox();
+            // 编译特殊判题代码
+            javaDockerSpecialCodeSandBox.compileSpecialCode(specialCodeName,specialCodePath);
+            // 编译错误直接返回错误信息
+            if (compileFileExecuteMessage.getErrorMessage() != null){
+                codeSandBoxResponse = new CodeSandBoxResponse();
+                codeSandBoxResponse.setCompileMessage("compileError: " + compileFileExecuteMessage.getErrorMessage());
+                codeSandBoxResponse.setSpecialJudgeMessage("SPJ_CE");
+                System.out.println("编译结果：" + compileFileExecuteMessage.getErrorMessage());
+                return codeSandBoxResponse;
+            }
+            // 执行特殊判题代码
+            List<ExecuteMessage> executeSpecialMessageList = javaDockerSpecialCodeSandBox.runSpecialFile(inputList, outputList);
+            codeSandBoxResponse = getSpecialResponse(executeSpecialMessageList);
+        }
 
         // 6.文件清理
         boolean delFile = delFile(userCodeFile);
@@ -102,6 +125,40 @@ public abstract class JavaCodeSandBoxTemplate implements CodeSandBox{
             log.error("deleteFile error, userCodeFilePath = {}", userCodeFile.getAbsolutePath());
         }
 
+        return codeSandBoxResponse;
+    }
+
+    /**
+     * 获取特殊判题结果
+     * @param executeSpecialMessageList
+     * @return
+     */
+    private CodeSandBoxResponse getResponse(List<ExecuteMessage> executeSpecialMessageList) {
+        // 5.整理返回结果
+        CodeSandBoxResponse codeSandBoxResponse = new CodeSandBoxResponse();
+        List<String> outputList = new ArrayList<>();
+        long max_time = 0L;
+        long memory = 0L;
+        for (ExecuteMessage executeMessage : executeSpecialMessageList) {
+            String errorMessage = executeMessage.getErrorMessage();
+            // 运行时有错误就退出
+            if (StrUtil.isNotBlank(errorMessage)) {
+                codeSandBoxResponse.setRuntimeMessage(errorMessage);
+                break;
+            }
+            outputList.add(executeMessage.getMessage());
+            long time = executeMessage.getTime();
+            // 取单个用例最大执行时间
+            max_time = Math.max(max_time, time);
+            // 取单个用例最大内存
+            memory = Math.max(memory, executeMessage.getMemory());
+        }
+        codeSandBoxResponse.setOutputList(outputList);
+        JudgeInfo judgeInfo = new JudgeInfo();
+        judgeInfo.setTime(max_time);
+        judgeInfo.setMemory(memory);
+        codeSandBoxResponse.setJudgeInfo(judgeInfo);
+        System.out.println("返回结果: " + codeSandBoxResponse);
         return codeSandBoxResponse;
     }
 
@@ -143,6 +200,7 @@ public abstract class JavaCodeSandBoxTemplate implements CodeSandBox{
         }
     }
 
+
     /**
      * 3. 执行代码
      * @param userCodeFile
@@ -181,21 +239,28 @@ public abstract class JavaCodeSandBoxTemplate implements CodeSandBox{
     }
 
     /**
-     * 4. 整理返回结果
+     * 4. 整理特殊代码执行的返回结果
      * @param executeMessageList
      * @return
      */
-    public CodeSandBoxResponse getResponse(List<ExecuteMessage> executeMessageList){
+    public CodeSandBoxResponse getSpecialResponse(List<ExecuteMessage> executeMessageList){
         // 5.整理返回结果
         CodeSandBoxResponse codeSandBoxResponse = new CodeSandBoxResponse();
         List<String> outputList = new ArrayList<>();
         long max_time = 0L;
         long memory = 0L;
+        String specialMessage = "SPJ_AC";
         for (ExecuteMessage executeMessage : executeMessageList) {
             String errorMessage = executeMessage.getErrorMessage();
             // 运行时有错误就退出
             if (StrUtil.isNotBlank(errorMessage)) {
                 codeSandBoxResponse.setRuntimeMessage(errorMessage);
+                codeSandBoxResponse.setSpecialJudgeMessage("SPJ_RE");
+                break;
+            }
+            String message = executeMessage.getMessage();
+            if (message.startsWith("WA")){
+                specialMessage = "SPJ_WA";
                 break;
             }
             outputList.add(executeMessage.getMessage());
@@ -205,6 +270,7 @@ public abstract class JavaCodeSandBoxTemplate implements CodeSandBox{
             // 取单个用例最大内存
             memory = Math.max(memory, executeMessage.getMemory());
         }
+        codeSandBoxResponse.setSpecialJudgeMessage(specialMessage);
         codeSandBoxResponse.setOutputList(outputList);
         JudgeInfo judgeInfo = new JudgeInfo();
         judgeInfo.setTime(max_time);

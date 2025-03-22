@@ -9,7 +9,7 @@ import java.util.List;
 
 /**
  * @author by xxz
- * @Description
+ * @Description 代码沙箱请求参数
  * @date 2024/9/18
  * @throws
  */
@@ -24,4 +24,6 @@ public class CodeSandBoxRequest {
     private String language;
 
     private List<String> inputList;
+
+    private Integer is_special;
 }

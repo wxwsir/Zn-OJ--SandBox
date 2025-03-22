@@ -31,11 +31,11 @@ public class CodeSandBoxResponse {
      */
     private String runtimeMessage;
     /**
+     * 特殊判题信息(SPJ_WA SPJ_AC SPJ_RE SPJ_TLE SPJ_MLE SPJ_CE)
+     */
+    private String specialJudgeMessage;
+    /**
      * 判题信息
      */
     private JudgeInfo judgeInfo;
-    /**
-     * 状态码(SPJ判题专用)
-     */
-    private String status;
 }
